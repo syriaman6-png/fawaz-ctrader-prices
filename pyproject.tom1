@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "fawaz-ctrader-backend"
+version = "0.1.0"
+description = "cTrader price streamer"
+authors = ["Fawaz"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+websockets = "*"
+ctrader-open-api = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
