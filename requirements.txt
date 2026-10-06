@@ -1,2 +1,4 @@
 websockets
 ctrader-open-api
+service_identity
+pyOpenSSL
