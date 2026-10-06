@@ -68,14 +68,30 @@ def on_symbols_list(result):
     try:
         print(f"🔍 Response type: {type(result).__name__}", flush=True)
         
+        # إذا كان رد خطأ
         if type(result).__name__ == "ProtoOAErrorRes":
             print(f"❌❌ ERROR CODE: {result.errorCode}", flush=True)
             print(f"❌❌ DESCRIPTION: {result.description}", flush=True)
             return
         
-        symbols = getattr(result, 'symbol', None)
+        # استخراج الرسالة الفعلية من الـ wrapper
+        try:
+            payload = Protobuf.extract(result)
+            print(f"🔍 Extracted type: {type(payload).__name__}", flush=True)
+        except Exception as e:
+            print(f"⚠️ Extract failed: {e}, using result directly", flush=True)
+            payload = result
+        
+        # إذا كان الرد المستخرج خطأ
+        if type(payload).__name__ == "ProtoOAErrorRes":
+            print(f"❌❌ ERROR CODE: {payload.errorCode}", flush=True)
+            print(f"❌❌ DESCRIPTION: {payload.description}", flush=True)
+            return
+        
+        # الحصول على قائمة الرموز
+        symbols = getattr(payload, 'symbol', None)
         if symbols is None:
-            print("❌ No 'symbol' attribute", flush=True)
+            print(f"❌ No 'symbol' attribute. Available: {[a for a in dir(payload) if not a.startswith('_')]}", flush=True)
             return
         
         print(f"✅ Got {len(symbols)} symbols", flush=True)
