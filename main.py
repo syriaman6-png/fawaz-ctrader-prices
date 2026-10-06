@@ -36,57 +36,102 @@ async def broadcast(symbol, price):
 
 def on_connected(c):
     print("✅ Connected to cTrader TCP", flush=True)
-    req = ProtoOAApplicationAuthReq()
-    req.clientId = CLIENT_ID
-    req.clientSecret = CLIENT_SECRET
-    c.send(req).addCallbacks(on_app_auth, on_error)
+    try:
+        req = ProtoOAApplicationAuthReq()
+        req.clientId = CLIENT_ID
+        req.clientSecret = CLIENT_SECRET
+        c.send(req).addCallbacks(on_app_auth, on_error)
+    except Exception as e:
+        print(f"❌ on_connected error: {e}", flush=True)
 
 def on_app_auth(result):
     print("✅ App authenticated", flush=True)
-    req = ProtoOAAccountAuthReq()
-    req.ctidTraderAccountId = ACCOUNT_ID
-    req.accessToken = ACCESS_TOKEN
-    client.send(req).addCallbacks(on_account_auth, on_error)
+    try:
+        req = ProtoOAAccountAuthReq()
+        req.ctidTraderAccountId = ACCOUNT_ID
+        req.accessToken = ACCESS_TOKEN
+        client.send(req).addCallbacks(on_account_auth, on_error)
+    except Exception as e:
+        print(f"❌ on_app_auth error: {e}", flush=True)
 
 def on_account_auth(result):
     print("✅ Account authenticated", flush=True)
-    req = ProtoOASymbolsListReq()
-    req.ctidTraderAccountId = ACCOUNT_ID
-    client.send(req).addCallbacks(on_symbols_list, on_error)
+    try:
+        req = ProtoOASymbolsListReq()
+        req.ctidTraderAccountId = ACCOUNT_ID
+        req.includeArchivedSymbols = False
+        client.send(req).addCallbacks(on_symbols_list, on_error)
+    except Exception as e:
+        print(f"❌ on_account_auth error: {e}", flush=True)
 
 def on_symbols_list(result):
-    print(f"✅ Got {len(result.symbol)} symbols", flush=True)
-    targets = {"US30": None, "US100": None, "XAUUSD": None}
-    for s in result.symbol:
-        name = s.symbolName.upper()
-        if "US30" in name or "DOW" in name or "WS30" in name or "DJI" in name:
-            targets["US30"] = s.symbolId
-        elif "US100" in name or "NAS" in name or "NDX" in name:
-            targets["US100"] = s.symbolId
-        elif "XAU" in name or "GOLD" in name:
-            targets["XAUUSD"] = s.symbolId
-    print(f"Found symbols: {targets}", flush=True)
-    ids = [v for v in targets.values() if v]
-    for name, sid in targets.items():
-        if sid: SYMBOL_MAP[sid] = name
-    if ids:
-        req = ProtoOASubscribeSpotsReq()
-        req.ctidTraderAccountId = ACCOUNT_ID
-        req.symbolId.extend(ids)
-        client.send(req)
-        print(f"✅ Subscribed to {ids}", flush=True)
+    try:
+        # المحاولة باستخراج الرسالة من الـ wrapper
+        try:
+            payload = Protobuf.extract(result)
+        except Exception:
+            payload = result
+        
+        print(f"🔍 Response type: {type(payload).__name__}", flush=True)
+        print(f"🔍 Available attrs: {[a for a in dir(payload) if not a.startswith('_')]}", flush=True)
+        
+        # الحصول على قائمة الرموز
+        symbols = getattr(payload, 'symbol', None)
+        if symbols is None:
+            symbols = getattr(payload, 'symbolId', None)
+        
+        if symbols is None:
+            print("❌ No symbols found in response", flush=True)
+            return
+        
+        print(f"✅ Got {len(symbols)} symbols", flush=True)
+        
+        targets = {"US30": None, "US100": None, "XAUUSD": None}
+        for s in symbols:
+            try:
+                name = s.symbolName.upper() if hasattr(s, 'symbolName') else ""
+                sid = s.symbolId if hasattr(s, 'symbolId') else None
+                if not sid: continue
+                if "US30" in name or "DOW" in name or "WS30" in name:
+                    targets["US30"] = sid
+                elif "US100" in name or "NAS" in name or "NDX" in name:
+                    targets["US100"] = sid
+                elif "XAU" in name or "GOLD" in name:
+                    targets["XAUUSD"] = sid
+            except Exception as e:
+                continue
+        
+        print(f"🎯 Found targets: {targets}", flush=True)
+        
+        ids = [v for v in targets.values() if v]
+        for name, sid in targets.items():
+            if sid: SYMBOL_MAP[sid] = name
+        
+        if ids:
+            req = ProtoOASubscribeSpotsReq()
+            req.ctidTraderAccountId = ACCOUNT_ID
+            req.symbolId.extend(ids)
+            client.send(req)
+            print(f"✅ Subscribed to symbols: {ids}", flush=True)
+        else:
+            print("❌ No matching symbols found!", flush=True)
+    except Exception as e:
+        print(f"❌ on_symbols_list error: {e}", flush=True)
 
 def on_message(c, message):
-    if message.payloadType == ProtoOASpotEvent().payloadType:
-        event = Protobuf.extract(message)
-        symbol = SYMBOL_MAP.get(event.symbolId, f"ID_{event.symbolId}")
-        price = event.bid / (10 ** event.digits) if event.bid else 0
-        if price:
-            print(f"💰 {symbol}: {price}", flush=True)
-            broadcast_sync(symbol, price)
+    try:
+        if message.payloadType == ProtoOASpotEvent().payloadType:
+            event = Protobuf.extract(message)
+            symbol = SYMBOL_MAP.get(event.symbolId, f"ID_{event.symbolId}")
+            price = event.bid / (10 ** event.digits) if event.bid else 0
+            if price:
+                print(f"💰 {symbol}: {price}", flush=True)
+                broadcast_sync(symbol, price)
+    except Exception as e:
+        print(f"❌ on_message error: {e}", flush=True)
 
 def on_error(failure):
-    print(f"❌ Error: {failure}", flush=True)
+    print(f"❌ Twisted error: {failure}", flush=True)
 
 def start_twisted():
     global client
