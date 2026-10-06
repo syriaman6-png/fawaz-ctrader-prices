@@ -59,29 +59,23 @@ def on_account_auth(result):
     try:
         req = ProtoOASymbolsListReq()
         req.ctidTraderAccountId = ACCOUNT_ID
-        req.includeArchivedSymbols = False
+        req.includeArchivedSymbols = True
         client.send(req).addCallbacks(on_symbols_list, on_error)
     except Exception as e:
         print(f"❌ on_account_auth error: {e}", flush=True)
 
 def on_symbols_list(result):
     try:
-        # المحاولة باستخراج الرسالة من الـ wrapper
-        try:
-            payload = Protobuf.extract(result)
-        except Exception:
-            payload = result
+        print(f"🔍 Response type: {type(result).__name__}", flush=True)
         
-        print(f"🔍 Response type: {type(payload).__name__}", flush=True)
-        print(f"🔍 Available attrs: {[a for a in dir(payload) if not a.startswith('_')]}", flush=True)
+        if type(result).__name__ == "ProtoOAErrorRes":
+            print(f"❌❌ ERROR CODE: {result.errorCode}", flush=True)
+            print(f"❌❌ DESCRIPTION: {result.description}", flush=True)
+            return
         
-        # الحصول على قائمة الرموز
-        symbols = getattr(payload, 'symbol', None)
+        symbols = getattr(result, 'symbol', None)
         if symbols is None:
-            symbols = getattr(payload, 'symbolId', None)
-        
-        if symbols is None:
-            print("❌ No symbols found in response", flush=True)
+            print("❌ No 'symbol' attribute", flush=True)
             return
         
         print(f"✅ Got {len(symbols)} symbols", flush=True)
@@ -98,7 +92,7 @@ def on_symbols_list(result):
                     targets["US100"] = sid
                 elif "XAU" in name or "GOLD" in name:
                     targets["XAUUSD"] = sid
-            except Exception as e:
+            except Exception:
                 continue
         
         print(f"🎯 Found targets: {targets}", flush=True)
@@ -136,8 +130,9 @@ def on_error(failure):
 def start_twisted():
     global client
     try:
-        print("🔌 Starting cTrader client...", flush=True)
-        client = Client(EndPoints.PROTOBUF_LIVE_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
+        print("🔌 Starting cTrader client (DEMO host)...", flush=True)
+        # استخدام سيرفر Demo (لأن الحساب Demo)
+        client = Client(EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
         client.setConnectedCallback(on_connected)
         client.setMessageReceivedCallback(on_message)
         client.startService()
